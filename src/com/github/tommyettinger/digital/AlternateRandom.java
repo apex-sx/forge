@@ -1,0 +1,351 @@
+/*
+ * Copyright (c) 2023 See AUTHORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
+
+package com.github.tommyettinger.digital;
+
+import java.util.Random;
+
+/**
+ * A drop-in replacement for {@link Random} that adds few new APIs, but is faster, has better statistical quality, and
+ * has a guaranteed longer minimum period (also called cycle length). This is similar to AceRandom in the Juniper
+ * library, and uses the same algorithm, but only extends Random, not Juniper's EnhancedRandom class. If you depend on
+ * Juniper, you lose nothing from using the EnhancedRandom classes (they also extend Random), but this class doesn't
+ * have as many features as Juniper's AceRandom. AlternateRandom doesn't depend on anything outside the JDK, though,
+ * so it fits easily as a small addition into digital.
+ * <br>
+ * This is mostly here to speed up the default shuffling methods in {@link ArrayTools}, and to allow those to produce
+ * many more possible shuffles. The number of possible shuffles that can be produced by that type of algorithm depends
+ * on the number of possible states of the random number generator; that number here is 2 to the 320, or
+ * 2135987035920910082395021706169552114602704522356652769947041607822219725780640550022962086936576 (but the actual
+ * amount in practice is smaller, to a hard minimum of 2 to the 64, or 18446744073709551616).
+ * <br>
+ * This does have some small additions to what a Random can provide: There is a constructor that takes all five states
+ * verbatim, the states themselves are all public longs, there is a {@link #copy()} method that does what it says, and
+ * there are {@link #serializeToString()} and {@link #deserializeFromString(CharSequence)} methods to read and write the
+ * state using {@link Base#SIMPLE64}. The serialization format is very terse, just 11 chars per state, in A through E
+ * order, appended one after the next without spaces. This format is not at all compatible with Juniper. Having all this
+ * allows AlternateRandom to be correctly handled by jdkgdxds-interop for libGDX Json serialization, kryo-digital for
+ * Kryo serialization, and tantrum-digital for Fory serialization.
+ */
+public class AlternateRandom extends Random {
+    /**
+     * The first state; can be any long. This state is the counter, and it is not affected by the other states.
+     */
+    public long stateA;
+    /**
+     * The second state; can be any long.
+     */
+    public long stateB;
+    /**
+     * The third state; can be any long.
+     */
+    public long stateC;
+    /**
+     * The fourth state; can be any long.
+     */
+    public long stateD;
+    /**
+     * The fifth state; can be any long. Returned verbatim on the first call to {@link #nextLong()}.
+     */
+    public long stateE;
+
+    private static long seedFromMath () {
+        return (long)((Math.random() - 0.5) * 0x1p52) ^ (long)((Math.random() - 0.5) * 0x1p64);
+    }
+    /**
+     * Creates a new AlternateRandom with a random state.
+     */
+    public AlternateRandom() {
+        stateA = seedFromMath();
+        stateB = seedFromMath();
+        stateC = seedFromMath();
+        stateD = seedFromMath();
+        stateE = seedFromMath();
+    }
+
+    /**
+     * Creates a new AlternateRandom with the given seed; all {@code long} values are permitted.
+     * The seed will be passed to {@link #setSeed(long)} to attempt to adequately distribute the seed randomly.
+     *
+     * @param seed any {@code long} value
+     */
+    public AlternateRandom(long seed) {
+        setSeed(seed);
+    }
+
+    /**
+     * Creates a new AlternateRandom with the given five states; all {@code long} values are permitted.
+     * The states will be not be changed at all, which can be useful to reproduce problematic conditions.
+     *
+     * @param a any {@code long} value
+     * @param b any {@code long} value
+     * @param c any {@code long} value
+     * @param d any {@code long} value
+     * @param e any {@code long} value
+     */
+    public AlternateRandom(long a, long b, long c, long d, long e) {
+        stateA = a;
+        stateB = b;
+        stateC = c;
+        stateD = d;
+        stateE = e;
+    }
+    /**
+     * This initializes all 5 states of the generator to random values based on the given seed.
+     * (2 to the 64) possible initial generator states can be produced here.
+     *
+     * @param seed the initial seed; may be any long
+     */
+    public void setSeed (long seed) {
+        seed = (seed ^ 0x1C69B3F74AC4AE35L) * 0x3C79AC492BA7B653L; // an XLCG
+        stateA = seed ^ ~0xC6BC279692B5C323L;
+        seed ^= seed >>> 32;
+        stateB = seed ^ 0xD3833E804F4C574BL;
+        seed *= 0xBEA225F9EB34556DL;                               // MX3 unary hash
+        seed ^= seed >>> 29;
+        stateC = seed ^ ~0xD3833E804F4C574BL;                      // updates are spread across the MX3 hash
+        seed *= 0xBEA225F9EB34556DL;
+        seed ^= seed >>> 32;
+        stateD = seed ^ 0xC6BC279692B5C323L;
+        seed *= 0xBEA225F9EB34556DL;
+        seed ^= seed >>> 29;
+        stateE = seed;
+    }
+
+    public long nextLong () {
+        final long fa = stateA;
+        final long fb = stateB;
+        final long fc = stateC;
+        final long fd = stateD;
+        final long fe = stateE;
+        stateA = fa + 0x9E3779B97F4A7C15L;
+        stateB = fa ^ fe;
+        stateC = fb + fd;
+        stateD = (fc << 52 | fc >>> 12);
+        stateE = fb - fc;
+        return fe;
+    }
+
+    public int next (int bits) {
+        final long fa = stateA;
+        final long fb = stateB;
+        final long fc = stateC;
+        final long fd = stateD;
+        final long fe = stateE;
+        stateA = fa + 0x9E3779B97F4A7C15L;
+        stateB = fa ^ fe;
+        stateC = fb + fd;
+        stateD = (fc << 52 | fc >>> 12);
+        stateE = fb - fc;
+        return (int) (fe) >>> (32 - bits);
+    }
+
+    public int nextInt() {
+        final long fa = stateA;
+        final long fb = stateB;
+        final long fc = stateC;
+        final long fd = stateD;
+        final long fe = stateE;
+        stateA = fa + 0x9E3779B97F4A7C15L;
+        stateB = fa ^ fe;
+        stateC = fb + fd;
+        stateD = (fc << 52 | fc >>> 12);
+        stateE = fb - fc;
+        return (int) (fe);
+    }
+
+    public int nextInt (int bound) {
+        final long fa = stateA;
+        final long fb = stateB;
+        final long fc = stateC;
+        final long fd = stateD;
+        final long fe = stateE;
+        final int result = (int)(bound * (fe & 0xFFFFFFFFL) >> 32) & ~(bound >> 31);
+        stateA = fa + 0x9E3779B97F4A7C15L;
+        stateB = fa ^ fe;
+        stateC = fb + fd;
+        stateD = (fc << 52 | fc >>> 12);
+        stateE = fb - fc;
+        return result;
+    }
+
+    public boolean nextBoolean() {
+        final long fa = stateA;
+        final long fb = stateB;
+        final long fc = stateC;
+        final long fd = stateD;
+        final long fe = stateE;
+        stateA = fa + 0x9E3779B97F4A7C15L;
+        stateB = fa ^ fe;
+        stateC = fb + fd;
+        stateD = (fc << 52 | fc >>> 12);
+        stateE = fb - fc;
+        return fe < 0L;
+    }
+
+    public float nextFloat () {
+        final long fa = stateA;
+        final long fb = stateB;
+        final long fc = stateC;
+        final long fd = stateD;
+        final long fe = stateE;
+        final float result = (fe >>> 40) * 0x1p-24f;
+        stateA = fa + 0x9E3779B97F4A7C15L;
+        stateB = fa ^ fe;
+        stateC = fb + fd;
+        stateD = (fc << 52 | fc >>> 12);
+        stateE = fb - fc;
+        return result;
+    }
+
+    public double nextDouble () {
+        final long fa = stateA;
+        final long fb = stateB;
+        final long fc = stateC;
+        final long fd = stateD;
+        final long fe = stateE;
+        final double result = (fe >>> 11) * 0x1.0p-53;
+        stateA = fa + 0x9E3779B97F4A7C15L;
+        stateB = fa ^ fe;
+        stateC = fb + fd;
+        stateD = (fc << 52 | fc >>> 12);
+        stateE = fb - fc;
+        return result;
+    }
+
+    public double nextGaussian() {
+        final long fa = stateA;
+        final long fb = stateB;
+        final long fc = stateC;
+        final long fd = stateD;
+        final long fe = stateE;
+        final double result = Distributor.normal(fe);
+        stateA = fa + 0x9E3779B97F4A7C15L;
+        stateB = fa ^ fe;
+        stateC = fb + fd;
+        stateD = (fc << 52 | fc >>> 12);
+        stateE = fb - fc;
+        return result;
+    }
+
+    @Override
+    public void nextBytes (byte[] bytes) {
+        for (int i = 0; i < bytes.length; ) {
+            for (long r = nextLong(), n = Math.min(bytes.length - i, 8); n-- > 0; r >>>= 8) {
+                bytes[i++] = (byte)r;
+            }
+        }
+    }
+
+    /**
+     * Produces a String that holds the entire state of this AlternateRandom. You can recover this state from such a
+     * String by calling {@link #deserializeFromString(CharSequence)} on any AlternateRandom, which will set that
+     * AlternateRandom's state. This does not serialize any fields inherited from {@link Random}, so the methods that
+     * use Random's side entirely, such as the Stream methods, won't be affected if this state is loaded.
+     * @return a String holding the current state of this AlternateRandom, to be loaded by {@link #deserializeFromString(CharSequence)}
+     */
+    public String serializeToString() {
+        return appendSerialized(new StringBuilder(55)).toString();
+    }
+    /**
+     * Appends the string form of this AlternateRandom to the given StringBuilder, StringBuffer, CharBuffer, or similar.
+     * You can recover this state from such a
+     * String by calling {@link #deserializeFromString(CharSequence)} on any AlternateRandom, which will set that
+     * AlternateRandom's state. This does not serialize any fields inherited from {@link Random}, so the methods that
+     * use Random's side entirely, such as the Stream methods, won't be affected if this state is loaded.
+     * @param sb an Appendable CharSequence that will be modified
+     * @return {@code sb}, for chaining
+     * @param <T> any type that is both a CharSequence and an Appendable, such as StringBuilder, StringBuffer, or CharBuffer
+     */
+    public <T extends CharSequence & Appendable> T appendSerialized(T sb) {
+        Base.SIMPLE64.appendUnsigned(sb, stateA);
+        Base.SIMPLE64.appendUnsigned(sb, stateB);
+        Base.SIMPLE64.appendUnsigned(sb, stateC);
+        Base.SIMPLE64.appendUnsigned(sb, stateD);
+        Base.SIMPLE64.appendUnsigned(sb, stateE);
+        return sb;
+    }
+
+    /**
+     * Given a String or other CharSequence produced by {@link #serializeToString()}, this sets the state of this
+     * AlternateRandom to the state stored in the start of that CharSequence. This does not deserialize any fields
+     * inherited from {@link Random}, so the methods that use Random's side entirely, such as the Stream methods, won't
+     * be affected by this state.
+     * @param data a String or other CharSequence produced by {@link #serializeToString()}
+     * @return this AlternateRandom, after its state has been loaded from the given String
+     */
+    public AlternateRandom deserializeFromString(CharSequence data) {
+        return deserializeFromString(data, 0);
+    }
+    /**
+     * Given a String or other CharSequence produced by {@link #serializeToString()} and an offset to indicate where to
+     * read 55 chars from that CharSequence, this sets the state of this AlternateRandom to the state stored in that
+     * CharSequence. This does not deserialize any fields inherited from {@link Random}, so the methods that
+     * use Random's side entirely, such as the Stream methods, won't be affected by this state.
+     * @param data a String or other CharSequence produced by {@link #serializeToString()}
+     * @param offset where to start reading the 55 chars of a serialized state from data
+     * @return this AlternateRandom, after its state has been loaded from the given String
+     */
+    public AlternateRandom deserializeFromString(CharSequence data, int offset) {
+        if(data == null || offset < 0 || data.length() - offset < 55) return this;
+        stateA = Base.SIMPLE64.readLong(data, offset     , offset + 11);
+        stateB = Base.SIMPLE64.readLong(data, offset + 11, offset + 22);
+        stateC = Base.SIMPLE64.readLong(data, offset + 22, offset + 33);
+        stateD = Base.SIMPLE64.readLong(data, offset + 33, offset + 44);
+        stateE = Base.SIMPLE64.readLong(data, offset + 44, offset + 55);
+        return this;
+    }
+
+    public AlternateRandom copy() {
+        return new AlternateRandom(stateA, stateB, stateC, stateD, stateE);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+
+        AlternateRandom random = (AlternateRandom) o;
+
+        if (stateA != random.stateA) return false;
+        if (stateB != random.stateB) return false;
+        if (stateC != random.stateC) return false;
+        if (stateD != random.stateD) return false;
+        return stateE == random.stateE;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = (int) (stateA ^ (stateA >>> 32));
+        result = 31 * result + (int) (stateB ^ (stateB >>> 32));
+        result = 31 * result + (int) (stateC ^ (stateC >>> 32));
+        result = 31 * result + (int) (stateD ^ (stateD >>> 32));
+        result = 31 * result + (int) (stateE ^ (stateE >>> 32));
+        return result;
+    }
+
+    @Override
+    public String toString() {
+        return "AlternateRandom{" +
+                "stateA=" + stateA +
+                ", stateB=" + stateB +
+                ", stateC=" + stateC +
+                ", stateD=" + stateD +
+                ", stateE=" + stateE +
+                '}';
+    }
+}

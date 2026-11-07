@@ -1,0 +1,38 @@
+package potatoxf.helper.exceptions;
+
+import potatoxf.helper.HelpString;
+
+/**
+ * 未初始化异常
+ *
+ * @author potatoxf
+ * @date 2021/9/26
+ */
+public class NotInitedException extends RuntimeException {
+  private static final long serialVersionUID = 8247610319171014183L;
+
+  public NotInitedException(Throwable e) {
+    super(e);
+  }
+
+  public NotInitedException(String message) {
+    super(message);
+  }
+
+  public NotInitedException(String messageTemplate, Object... params) {
+    super(HelpString.format(messageTemplate, params));
+  }
+
+  public NotInitedException(String message, Throwable throwable) {
+    super(message, throwable);
+  }
+
+  public NotInitedException(
+      String message, Throwable throwable, boolean enableSuppression, boolean writableStackTrace) {
+    super(message, throwable, enableSuppression, writableStackTrace);
+  }
+
+  public NotInitedException(Throwable throwable, String messageTemplate, Object... params) {
+    super(HelpString.format(messageTemplate, params), throwable);
+  }
+}

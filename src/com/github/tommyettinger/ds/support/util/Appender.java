@@ -1,0 +1,151 @@
+/*
+ * Copyright (c) 2024-2025 See AUTHORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.github.tommyettinger.ds.support.util;
+
+import com.github.tommyettinger.digital.Base;
+
+import java.io.IOException;
+import java.util.Objects;
+
+/**
+ * A functional interface that takes and returns an object that is a CharSequence and is Appendable, appending
+ * a {@code T} item to it.
+ * This is not typically a method reference to anything in {@link Base}, which is different from other Appender types. This will frequently
+ * use a lambda.
+ *
+ * @param <T> the type of items that can be appended by this functional interface
+ */
+public interface Appender<T> {
+	/**
+	 * Appends {@code item} to {@code sb} and returns {@code sb} for chaining.
+	 *
+	 * @param sb   an Appendable CharSequence that will be modified, such as a StringBuilder
+	 * @param item the item to append
+	 * @param <S>  any type that is both a CharSequence and an Appendable, such as StringBuilder, StringBuffer, CharBuffer, or CharList
+	 * @return {@code sb}, after modification
+	 */
+	<S extends CharSequence & Appendable> S apply(S sb, T item);
+
+	/**
+	 * Commonly used as a method reference where a generic Appender is needed.
+	 *
+	 * @param sb   an Appendable CharSequence that will be modified, such as a StringBuilder
+	 * @param item the item to append
+	 * @param <S>  any type that is both a CharSequence and an Appendable, such as StringBuilder, StringBuffer, CharBuffer, or CharList
+	 * @param <T>  the type of {@code item}, which will be run through {@link Objects#toString(Object)} to get a String representation
+	 * @return {@code sb}, after modification
+	 */
+	static <S extends CharSequence & Appendable, T> S append(S sb, T item) {
+		try {
+			sb.append(Objects.toString(item));
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+		return sb;
+	}
+
+	/**
+	 * Appends the {@link Enum#name()} to the given Appendable CharSequence, so {@code valueOf} can be used to look up
+	 * an enum constant when reading.
+	 * <br>
+	 * Similar to {@link #append(CharSequence, Object)}, but not intended to be used as a method reference; use
+	 * {@link #ENUM_NAME_APPENDER} if you need an Appender instance (it should perform identically, but works around a
+	 * bug in GWT that would make a method reference fail to compile).
+	 *
+	 * @param sb   an Appendable CharSequence that will be modified, such as a StringBuilder
+	 * @param item the Enum item to append the {@link Enum#name()} of
+	 * @param <S>  any type that is both a CharSequence and an Appendable, such as StringBuilder, StringBuffer, CharBuffer, or CharList
+	 * @return {@code sb}, after modification
+	 */
+	static <S extends CharSequence & Appendable> S appendEnumName(S sb, Enum<?> item) {
+		try {
+			sb.append(item == null ? "null" : item.name());
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+		return sb;
+	}
+
+	/**
+	 * Used in enum-keyed maps and sets to write an Enum constant's name, rather than its toString result.
+	 * Does not use a method reference, and instead has to use an anonymous inner class, because of GWT.
+	 */
+	Appender<Enum<?>> ENUM_NAME_APPENDER = new Appender<Enum<?>>() {
+		@Override
+		public <S extends CharSequence & Appendable> S apply(S sb, Enum<?> item) {
+			try {
+				sb.append(item == null ? "null" : item.name());
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
+			return sb;
+
+		}
+	};
+
+	/**
+	 * A pre-made Appender for String items. This exists both for convenience and to avoid repeatedly creating new
+	 * method references on Android.
+	 */
+	Appender<String> STRING_APPENDER = new Appender<String>() {
+		@Override
+		public <S extends CharSequence & Appendable> S apply(S sb, String item) {
+			try {
+				sb.append(item);
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
+			return sb;
+		}
+	};
+
+	/**
+	 * A pre-made Appender for CharSequence items. This exists both for convenience and to avoid repeatedly creating new
+	 * method references on Android.
+	 */
+	Appender<CharSequence> CHARSEQUENCE_APPENDER = new Appender<CharSequence>() {
+		@Override
+		public <S extends CharSequence & Appendable> S apply(S sb, CharSequence item) {
+			try {
+				sb.append(item);
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
+			return sb;
+		}
+	};
+
+	/**
+	 * A pre-made Appender for any Object items. This exists both for convenience and to avoid repeatedly creating new
+	 * method references on Android.
+	 * <br>
+	 * NOTE: Whether this works or not in practice (on all platforms) is unknown. If in doubt, create a strongly-typed
+	 * Appender from a method reference to {@link #append(CharSequence, Object)} and store it once per type, as with:
+	 * {@code public static final Appender<Thing> THING_APPENDER = Appender::append;} for your own type {@code Thing}.
+	 */
+	Appender<?> ANY_APPENDER = new Appender<Object>() {
+		@Override
+		public <S extends CharSequence & Appendable> S apply(S sb, Object item) {
+			try {
+				sb.append(Objects.toString(item));
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
+			return sb;
+		}
+	};
+}

@@ -1,0 +1,24 @@
+# ========== 忽略所有文件
+*
+# ========== 放行所有目录
+!*/
+# ========== 放行仓库文件
+!.gitattributes
+!.gitignore
+!.gitmodules
+!LICENSE*
+!README*
+
+
+.idea/
+target/
+out/
+!*.info
+!*.java
+!*.sql
+!*.xml
+!*.yml
+!*.yaml
+!*.properties
+!**/META-INF/spring/*
+

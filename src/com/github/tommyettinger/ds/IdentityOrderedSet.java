@@ -1,0 +1,384 @@
+/*
+ * Copyright (c) 2022-2025 See AUTHORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package com.github.tommyettinger.ds;
+
+import com.github.tommyettinger.ds.support.util.PartialParser;
+
+import java.util.Collection;
+import java.util.Iterator;
+
+/**
+ * A variant on {@link ObjectOrderedSet} that compares items by identity (using {@code ==}) instead of equality (using {@code equals()}).
+ * It also hashes with {@link System#identityHashCode(Object)} instead of calling the {@code hashCode()} of an item. This can be useful in
+ * some cases where items may have invalid {@link Object#equals(Object)} and/or {@link Object#hashCode()} implementations, or if items
+ * could be very large (making a hashCode() that uses all the parts of the item slow). Oddly, {@link System#identityHashCode(Object)} tends
+ * to be slower than the hashCode() for most small items, because an explicitly-written hashCode() typically doesn't need to do anything
+ * concurrently, but identityHashCode() needs to (concurrently) modify an internal JVM variable that ensures the results are unique, and
+ * that requires the JVM to do lots of extra work whenever identityHashCode() is called. Despite that, identityHashCode() doesn't depend
+ * on the quantity of variables in the item, so identityHashCode() gets relatively faster for larger items. The equals() method used by
+ * ObjectOrderedSet also tends to slow down for large items, relative to the constant-time {@code ==} this uses.
+ * <br>
+ * This can potentially be useful for tracking references to ensure they are all unique by identity, such as to avoid referential cycles.
+ * You might prefer this to {@link IdentitySet} if you need to ensure fast iteration or want access by index.
+ */
+public class IdentityOrderedSet<T> extends ObjectOrderedSet<T> {
+	public IdentityOrderedSet(OrderType type) {
+		super(type);
+	}
+
+	public IdentityOrderedSet(int initialCapacity, OrderType type) {
+		super(initialCapacity, type);
+	}
+
+	public IdentityOrderedSet(int initialCapacity, float loadFactor, OrderType type) {
+		super(initialCapacity, loadFactor, type);
+	}
+
+	/**
+	 * Creates a new instance containing the items in the specified iterator.
+	 *
+	 * @param coll an iterator that will have its remaining contents added to this
+	 */
+	public IdentityOrderedSet(Iterator<? extends T> coll, OrderType type) {
+		super(coll, type);
+	}
+
+	public IdentityOrderedSet(ObjectOrderedSet<? extends T> set, OrderType type) {
+		super(set, type);
+	}
+
+	public IdentityOrderedSet(Collection<? extends T> coll, OrderType type) {
+		super(coll, type);
+	}
+
+	public IdentityOrderedSet(T[] array, int offset, int length, OrderType type) {
+		super(array, offset, length, type);
+	}
+
+	public IdentityOrderedSet(T[] array, OrderType type) {
+		super(array, type);
+	}
+
+	public IdentityOrderedSet(Ordered<T> other, int offset, int count, OrderType type) {
+		super(other, offset, count, type);
+	}
+
+	// default order type
+
+	public IdentityOrderedSet() {
+		super();
+	}
+
+	public IdentityOrderedSet(int initialCapacity) {
+		super(initialCapacity);
+	}
+
+	public IdentityOrderedSet(int initialCapacity, float loadFactor) {
+		super(initialCapacity, loadFactor);
+	}
+
+	/**
+	 * Creates a new instance containing the items in the specified iterator.
+	 *
+	 * @param coll an iterator that will have its remaining contents added to this
+	 */
+	public IdentityOrderedSet(Iterator<? extends T> coll) {
+		super(coll);
+	}
+
+	public IdentityOrderedSet(ObjectOrderedSet<? extends T> set) {
+		super(set);
+	}
+
+	public IdentityOrderedSet(Collection<? extends T> coll) {
+		super(coll);
+	}
+
+	public IdentityOrderedSet(T[] array, int offset, int length) {
+		super(array, offset, length);
+	}
+
+	public IdentityOrderedSet(T[] array) {
+		super(array);
+	}
+
+	public IdentityOrderedSet(Ordered<T> other, int offset, int count) {
+		super(other, offset, count);
+	}
+
+	@Override
+	protected int place(Object item) {
+		return System.identityHashCode(item) & mask;
+	}
+
+	@Override
+	protected boolean equate(Object left, Object right) {
+		return left == right;
+	}
+
+	@Override
+	public int hashCode() {
+		int h = size;
+		ObjectList<T> order = items;
+		for (int i = 0, n = order.size(); i < n; i++) {
+			h += System.identityHashCode(order.get(i)); // checking for null items doesn't matter here; their hash is 0.
+		}
+		return h ^ h >>> 16;
+	}
+
+	@Override
+	public boolean addAll(Collection<? extends T> coll) {
+		final int oldSize = size;
+		if(oldSize == 0 && coll instanceof IdentityOrderedSet){
+			resetTo((IdentityOrderedSet<? extends T>) coll);
+		} else {
+			final int length = coll.size();
+			ensureCapacity(length);
+			for (T t : coll) {
+				add(t);
+			}
+		}
+		return oldSize != size;
+	}
+
+	private void resetTo(IdentityOrderedSet<? extends T> set) {
+		if(loadFactor == set.loadFactor) {
+			threshold = set.threshold;
+			mask = set.mask;
+			shift = set.shift;
+
+			keyTable = Utilities.copyOf(set.keyTable, keyTable);
+			size = set.size;
+			items.addAll(set.items);
+		} else {
+			final int length = set.size();
+			ensureCapacity(length);
+			for (T t : set) {
+				//noinspection UseBulkOperation
+				add(t);
+			}
+		}
+	}
+
+	/**
+	 * Constructs an empty set given the type as a generic type argument.
+	 * This is usually less useful than just using the constructor, but can be handy
+	 * in some code-generation scenarios when you don't know how many arguments you will have.
+	 *
+	 * @param <T> the type of items; must be given explicitly
+	 * @return a new set containing nothing
+	 */
+	public static <T> IdentityOrderedSet<T> with() {
+		return new IdentityOrderedSet<>(0);
+	}
+
+	/**
+	 * Creates a new IdentityOrderedSet that holds only the given item, but can be resized.
+	 *
+	 * @param item one T item
+	 * @param <T>  the type of item, typically inferred
+	 * @return a new IdentityOrderedSet that holds the given item
+	 */
+	public static <T> IdentityOrderedSet<T> with(T item) {
+		IdentityOrderedSet<T> set = new IdentityOrderedSet<>(1);
+		set.add(item);
+		return set;
+	}
+
+	/**
+	 * Creates a new IdentityOrderedSet that holds only the given items, but can be resized.
+	 *
+	 * @param item0 a T item
+	 * @param item1 a T item
+	 * @param <T>   the type of item, typically inferred
+	 * @return a new IdentityOrderedSet that holds the given items
+	 */
+	public static <T> IdentityOrderedSet<T> with(T item0, T item1) {
+		IdentityOrderedSet<T> set = new IdentityOrderedSet<>(2);
+		set.add(item0, item1);
+		return set;
+	}
+
+	/**
+	 * Creates a new IdentityOrderedSet that holds only the given items, but can be resized.
+	 *
+	 * @param item0 a T item
+	 * @param item1 a T item
+	 * @param item2 a T item
+	 * @param <T>   the type of item, typically inferred
+	 * @return a new IdentityOrderedSet that holds the given items
+	 */
+	public static <T> IdentityOrderedSet<T> with(T item0, T item1, T item2) {
+		IdentityOrderedSet<T> set = new IdentityOrderedSet<>(3);
+		set.add(item0, item1, item2);
+		return set;
+	}
+
+	/**
+	 * Creates a new IdentityOrderedSet that holds only the given items, but can be resized.
+	 *
+	 * @param item0 a T item
+	 * @param item1 a T item
+	 * @param item2 a T item
+	 * @param item3 a T item
+	 * @param <T>   the type of item, typically inferred
+	 * @return a new IdentityOrderedSet that holds the given items
+	 */
+	public static <T> IdentityOrderedSet<T> with(T item0, T item1, T item2, T item3) {
+		IdentityOrderedSet<T> set = new IdentityOrderedSet<>(4);
+		set.add(item0, item1, item2, item3);
+		return set;
+	}
+
+	/**
+	 * Creates a new IdentityOrderedSet that holds only the given items, but can be resized.
+	 *
+	 * @param item0 a T item
+	 * @param item1 a T item
+	 * @param item2 a T item
+	 * @param item3 a T item
+	 * @param item4 a T item
+	 * @param <T>   the type of item, typically inferred
+	 * @return a new IdentityOrderedSet that holds the given items
+	 */
+	public static <T> IdentityOrderedSet<T> with(T item0, T item1, T item2, T item3, T item4) {
+		IdentityOrderedSet<T> set = new IdentityOrderedSet<>(5);
+		set.add(item0, item1, item2, item3, item4);
+		return set;
+	}
+
+	/**
+	 * Creates a new IdentityOrderedSet that holds only the given items, but can be resized.
+	 *
+	 * @param item0 a T item
+	 * @param item1 a T item
+	 * @param item2 a T item
+	 * @param item3 a T item
+	 * @param item4 a T item
+	 * @param item5 a T item
+	 * @param <T>   the type of item, typically inferred
+	 * @return a new IdentityOrderedSet that holds the given items
+	 */
+	public static <T> IdentityOrderedSet<T> with(T item0, T item1, T item2, T item3, T item4, T item5) {
+		IdentityOrderedSet<T> set = new IdentityOrderedSet<>(6);
+		set.add(item0, item1, item2, item3, item4, item5);
+		return set;
+	}
+
+	/**
+	 * Creates a new IdentityOrderedSet that holds only the given items, but can be resized.
+	 *
+	 * @param item0 a T item
+	 * @param item1 a T item
+	 * @param item2 a T item
+	 * @param item3 a T item
+	 * @param item4 a T item
+	 * @param item5 a T item
+	 * @param item6 a T item
+	 * @param <T>   the type of item, typically inferred
+	 * @return a new IdentityOrderedSet that holds the given items
+	 */
+	public static <T> IdentityOrderedSet<T> with(T item0, T item1, T item2, T item3, T item4, T item5, T item6) {
+		IdentityOrderedSet<T> set = new IdentityOrderedSet<>(7);
+		set.add(item0, item1, item2, item3, item4, item5, item6);
+		return set;
+	}
+
+	/**
+	 * Creates a new IdentityOrderedSet that holds only the given items, but can be resized.
+	 *
+	 * @param item0 a T item
+	 * @param item1 a T item
+	 * @param item2 a T item
+	 * @param item3 a T item
+	 * @param item4 a T item
+	 * @param item5 a T item
+	 * @param item6 a T item
+	 * @param item7 a T item
+	 * @param <T>   the type of item, typically inferred
+	 * @return a new IdentityOrderedSet that holds the given items
+	 */
+	public static <T> IdentityOrderedSet<T> with(T item0, T item1, T item2, T item3, T item4, T item5, T item6, T item7) {
+		IdentityOrderedSet<T> set = new IdentityOrderedSet<>(8);
+		set.add(item0, item1, item2, item3, item4, item5, item6, item7);
+		return set;
+	}
+
+	/**
+	 * Creates a new IdentityOrderedSet that holds only the given items, but can be resized.
+	 * This overload will only be used when an array is supplied and the type of the
+	 * items requested is the component type of the array, or if varargs are used and
+	 * there are 9 or more arguments.
+	 *
+	 * @param varargs a T varargs or T array; remember that varargs allocate
+	 * @param <T>     the type of item, typically inferred
+	 * @return a new IdentityOrderedSet that holds the given items
+	 */
+	@SafeVarargs
+	public static <T> IdentityOrderedSet<T> with(T... varargs) {
+		return new IdentityOrderedSet<>(varargs);
+	}
+
+	/**
+	 * Calls {@link #parse(String, String, PartialParser, boolean)} with brackets set to false.
+	 *
+	 * @param str       a String that will be parsed in full
+	 * @param delimiter the delimiter between items in str
+	 * @param parser    a PartialParser that returns a {@code T} item from a section of {@code str}
+	 * @return a new collection parsed from str
+	 */
+	public static <T> IdentityOrderedSet<T> parse(String str, String delimiter, PartialParser<T> parser) {
+		return parse(str, delimiter, parser, false);
+	}
+
+	/**
+	 * Creates a new collection and fills it by calling {@link #addLegible(String, String, PartialParser, int, int)} on
+	 * either all of {@code str} (if {@code brackets} is false) or {@code str} without its first and last chars (if
+	 * {@code brackets} is true). Each item is expected to be separated by {@code delimiter}.
+	 *
+	 * @param str       a String that will be parsed in full (depending on brackets)
+	 * @param delimiter the delimiter between items in str
+	 * @param parser    a PartialParser that returns a {@code T} item from a section of {@code str}
+	 * @param brackets  if true, the first and last chars in str will be ignored
+	 * @return a new collection parsed from str
+	 */
+	public static <T> IdentityOrderedSet<T> parse(String str, String delimiter, PartialParser<T> parser, boolean brackets) {
+		IdentityOrderedSet<T> c = new IdentityOrderedSet<>();
+		if (brackets)
+			c.addLegible(str, delimiter, parser, 1, str.length() - 1);
+		else
+			c.addLegible(str, delimiter, parser);
+		return c;
+	}
+
+	/**
+	 * Creates a new collection and fills it by calling {@link #addLegible(String, String, PartialParser, int, int)}
+	 * with the given five parameters as-is.
+	 *
+	 * @param str       a String that will have the given section parsed
+	 * @param delimiter the delimiter between items in str
+	 * @param parser    a PartialParser that returns a {@code T} item from a section of {@code str}
+	 * @param offset    the first position to parse in str, inclusive
+	 * @param length    how many chars to parse, starting from offset
+	 * @return a new collection parsed from str
+	 */
+	public static <T> IdentityOrderedSet<T> parse(String str, String delimiter, PartialParser<T> parser, int offset, int length) {
+		IdentityOrderedSet<T> c = new IdentityOrderedSet<>();
+		c.addLegible(str, delimiter, parser, offset, length);
+		return c;
+	}
+}
