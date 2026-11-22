@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Copyright (c) 2026 版权所有。
+  ~
+  ~ 未经版权所有者事先书面许可，任何人不得以任何方式复制、传播、修改本文件及相关代码。
+  ~ 本代码按"现状"提供，不提供任何明示或暗示的担保，包括但不限于适销性、特定用途适用性的保证。
+  ~ 在法律允许范围内，版权方不对因使用本代码产生的任何损失承担责任。
+  ~
+  ~ @author ApexSX
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>io.github.apex-sx</groupId>
+        <artifactId>forge</artifactId>
+        <version>0.1.0</version>
+    </parent>
+    <artifactId>forge-core</artifactId>
+    <name>forge-core</name>
+    <description>forge 核心基础模块，提供通用基础能力与支撑类。</description>
+</project>
