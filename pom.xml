@@ -14,7 +14,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.github.apex-sx</groupId>
     <artifactId>forge</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
     <packaging>pom</packaging>
     <name>forge</name>
     <description>一款轻量化 Java 通用工具集，对 JDK 原生 API 做友好封装，收拢开发过程中高频零散操作。内置字符串处理、日期时间、集合数组、文件
